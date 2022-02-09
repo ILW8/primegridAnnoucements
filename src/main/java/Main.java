@@ -14,35 +14,54 @@ import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.RejectedExecutionException;
 
 public class Main implements PropertyChangeListener {
     public static class DiscordBot implements EventListener {
         private static class MessageChecker extends TimerTask {
             JDA jda;
-            public MessageChecker(JDA jda){
+            Timer timer;
+
+            public MessageChecker(JDA jda, Timer timer) {
                 this.jda = jda;
+                this.timer = timer;
             }
 
             @Override
             public void run() {
-//                System.out.println("checking message reactions");
-                Message message = Objects.requireNonNull(jda.getTextChannelById("357545354356588548"))
-                        .retrieveMessageById("357606917670961152")
-                        .complete();
-                List<MessageReaction> reactions = message.getReactions();
-                for (MessageReaction reaction : reactions) {
-                    if (reaction.getReactionEmote().getName().equals("\uD83D\uDED1")){
-                        System.out.println("Matched emote, touching shutdown flag file");
-                        File flagFile = new File("shutdown.flag");
-                        try {
-                            System.out.println(flagFile.createNewFile() ? "Created new file": "File already exists");
-                            message.clearReactions().complete();
-                        } catch (IOException e) {
-                            e.printStackTrace();
+                try {
+                    Message message = Objects.requireNonNull(jda.getTextChannelById("357545354356588548"))
+                            .retrieveMessageById("357606917670961152")
+                            .complete();
+                    List<MessageReaction> reactions = message.getReactions();
+                    for (MessageReaction reaction : reactions) {
+                        System.out.print(reaction.getReactionEmote().getName() + " ");
+                        if (reaction.getReactionEmote().getName().equals("\uD83D\uDED1")) {
+                            System.out.println("Matched emote, touching shutdown flag file");
+                            File flagFile = new File("shutdown.flag");
+                            try {
+                                System.out.println(flagFile.createNewFile()
+                                        ? "Created new file"
+                                        : "File already exists");
+                                message.clearReactions().complete();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            break;
                         }
-                        break;
                     }
+                    if (!reactions.isEmpty()) {
+                        System.out.println(ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT));
+                    }
+                } catch (RejectedExecutionException ignored) {
+                    timer.cancel();
+                    timer.purge();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         }
@@ -65,27 +84,24 @@ public class Main implements PropertyChangeListener {
                             .build();
                     jda.awaitReady();
 
-                } catch (LoginException | InterruptedException e)
-                {
+                } catch (LoginException | InterruptedException e) {
                     e.printStackTrace();
                     try {
                         Thread.sleep(1000);
-                    }
-                    catch(InterruptedException ex) {
+                    } catch (InterruptedException ex) {
                         Thread.currentThread().interrupt();
                     }
                     this.setRestart(true);
                 }
 
-                MessageChecker messageChecker = new MessageChecker(jda);
-                Timer timer =  new Timer();
+                Timer timer = new Timer();
+                MessageChecker messageChecker = new MessageChecker(jda, timer);
                 timer.schedule(messageChecker, 250, 1000);
             } catch (Exception e) {
                 System.err.println(e.getMessage());
                 try {
                     Thread.sleep(500);
-                }
-                catch(InterruptedException ex) {
+                } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 }
                 this.setRestart(true);
@@ -109,8 +125,7 @@ public class Main implements PropertyChangeListener {
 
                 try {
                     Thread.sleep(1000);
-                }
-                catch(InterruptedException ex) {
+                } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 }
                 this.setRestart(true);
@@ -139,6 +154,7 @@ public class Main implements PropertyChangeListener {
 
     String botToken;
     DiscordBot bot;
+
     public void startBot(DiscordBot bot) throws FileNotFoundException {
         File botTokenFile = new File("botToken");
         this.botToken = (new Scanner(botTokenFile)).nextLine();
